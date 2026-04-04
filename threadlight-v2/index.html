@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>THREADLIGHT — Elastic Glow × Hand Game</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --neon-cyan:   #00f5ff;
+  --neon-pink:   #ff2d78;
+  --neon-gold:   #ffd166;
+  --neon-green:  #39ff14;
+  --neon-purple: #bf5fff;
+  --dim-white:   rgba(255,255,255,0.6);
+  --bg: #000;
+}
+
+body {
+  background: #000;
+  overflow: hidden;
+  width: 100dvw; height: 100dvh;
+  font-family: 'Share Tech Mono', monospace;
+  user-select: none;
+}
+
+/* scanlines */
+body::after {
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:1000;
+  background: repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.06) 3px,rgba(0,0,0,0.06) 4px);
+}
+
+canvas { position:fixed; inset:0; width:100%; height:100%; display:block; }
+#videoEl { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; pointer-events:none; transform:scaleX(-1); }
+
+/* ── SCREENS ───────────────────────────────────────────── */
+.screen {
+  position: fixed; inset: 0; z-index: 500;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  transition: opacity .6s ease;
+}
+.screen.hidden { opacity:0; pointer-events:none; }
+
+/* Menu */
+#menuScreen { background: #000; }
+#menuScreen .logo {
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(36px,7vw,96px);
+  font-weight: 900;
+  letter-spacing: .15em;
+  background: linear-gradient(135deg, var(--neon-cyan), var(--neon-pink), var(--neon-gold));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-align: center; line-height: 1;
+  animation: logoPulse 3s ease-in-out infinite;
+}
+@keyframes logoPulse {
+  0%,100% { filter: drop-shadow(0 0 20px rgba(0,245,255,.5)); }
+  50%      { filter: drop-shadow(0 0 40px rgba(255,45,120,.6)); }
+}
+#menuScreen .tagline {
+  margin-top: 10px; font-size: 11px; letter-spacing: .35em;
+  color: rgba(255,255,255,0.3); text-transform: uppercase;
+}
+
+.menu-cards {
+  display: flex; gap: 16px; margin-top: 48px; flex-wrap: wrap; justify-content: center; padding: 0 20px;
+}
+.mode-card {
+  width: 200px; padding: 24px 20px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all .25s;
+  text-align: center;
+}
+.mode-card:hover {
+  background: rgba(255,255,255,0.07);
+  border-color: var(--neon-cyan);
+  transform: translateY(-4px);
+  box-shadow: 0 0 20px rgba(0,245,255,.2);
+}
+.mode-card .icon { font-size: 36px; margin-bottom: 12px; }
+.mode-card .name {
+  font-family: 'Orbitron', monospace;
+  font-size: 13px; font-weight: 700;
+  letter-spacing: .2em; color: #fff; margin-bottom: 6px;
+}
+.mode-card .desc { font-size: 10px; color: rgba(255,255,255,.35); line-height: 1.7; letter-spacing: .05em; }
+
+/* HUD — always on top of canvas */
+#hud {
+  position: fixed; inset: 0; z-index: 400; pointer-events: none;
+}
+
+/* Corner brackets */
+.bracket { position:absolute; width:28px; height:28px; border-color:rgba(255,255,255,0.18); border-style:solid; }
+.bracket.tl{top:10px;left:10px;border-width:1px 0 0 1px}
+.bracket.tr{top:10px;right:10px;border-width:1px 1px 0 0}
+.bracket.bl{bottom:10px;left:10px;border-width:0 0 1px 1px}
+.bracket.br{bottom:10px;right:10px;border-width:0 1px 1px 0}
+
+.hud-tl { position:absolute; top:18px; left:18px; font-size:9px; letter-spacing:.15em; color:rgba(255,255,255,.3); line-height:2; }
+.hud-tr { position:absolute; top:18px; right:18px; font-size:9px; letter-spacing:.15em; color:rgba(255,255,255,.3); line-height:2; text-align:right; }
+.hud-bl { position:absolute; bottom:18px; left:18px; font-size:9px; letter-spacing:.15em; color:rgba(255,255,255,.3); line-height:2; }
+
+.status-dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#444; margin-right:6px; vertical-align:middle; transition:background .4s; }
+.status-dot.live { background:var(--neon-cyan); box-shadow:0 0 6px var(--neon-cyan); animation:blink 2s ease-in-out infinite; }
+.status-dot.warn { background:var(--neon-gold); }
+.status-dot.err  { background:var(--neon-pink); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* SCORE HUD */
+#scoreHud {
+  position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+  z-index: 401; pointer-events: none; text-align: center; display: none;
+}
+#scoreHud .score-val {
+  font-family: 'Orbitron', monospace; font-size: clamp(28px,5vw,52px); font-weight: 900;
+  color: var(--neon-gold); letter-spacing: .1em;
+  text-shadow: 0 0 20px rgba(255,209,102,.6);
+}
+#scoreHud .score-label { font-size: 9px; letter-spacing: .3em; color:rgba(255,255,255,.3); margin-top: -4px; }
+#scoreHud .lives-row { display:flex; gap:8px; justify-content:center; margin-top:8px; }
+.heart { font-size: 16px; transition: all .3s; }
+.heart.lost { opacity: .15; filter: grayscale(1); transform: scale(.7); }
+
+/* COMBO popup */
+#comboPopup {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%,-60%);
+  z-index: 600; pointer-events: none; text-align: center;
+  opacity: 0; transition: opacity .2s;
+}
+#comboPopup.show { opacity: 1; }
+#comboPopup .combo-text {
+  font-family: 'Orbitron', monospace; font-size: clamp(32px,6vw,72px); font-weight: 900;
+  color: var(--neon-green); letter-spacing: .15em;
+  text-shadow: 0 0 30px rgba(57,255,20,.8);
+  animation: comboBounce .4s ease;
+}
+@keyframes comboBounce { 0%{transform:scale(0.5)} 60%{transform:scale(1.2)} 100%{transform:scale(1)} }
+
+/* GAME OVER */
+#gameOver {
+  position: fixed; inset: 0; z-index: 700;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.85); backdrop-filter: blur(8px);
+  opacity: 0; pointer-events: none; transition: opacity .5s;
+}
+#gameOver.show { opacity: 1; pointer-events: all; }
+#gameOver .go-title {
+  font-family: 'Orbitron', monospace; font-size: clamp(32px,6vw,72px); font-weight: 900;
+  color: var(--neon-pink); letter-spacing: .2em;
+  text-shadow: 0 0 40px rgba(255,45,120,.7);
+}
+#gameOver .go-score { font-size:14px; letter-spacing:.3em; color:rgba(255,255,255,.5); margin-top:12px; }
+#gameOver .go-final { font-family:'Orbitron',monospace; font-size:clamp(20px,4vw,40px); font-weight:700; color:var(--neon-gold); margin-top:4px; }
+#gameOver .go-btn {
+  margin-top:32px; padding:14px 36px;
+  background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.2);
+  color:#fff; font-family:'Orbitron',monospace; font-size:12px; letter-spacing:.25em;
+  cursor:pointer; transition:all .2s; border-radius:2px;
+}
+#gameOver .go-btn:hover { background:rgba(0,245,255,.1); border-color:var(--neon-cyan); color:var(--neon-cyan); }
+
+/* Controls bottom bar */
+#controlsBar {
+  position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 8px; z-index: 402; pointer-events: all;
+}
+.btn {
+  padding: 7px 14px;
+  background: rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12);
+  color: rgba(255,255,255,.55); font-family:'Share Tech Mono',monospace;
+  font-size: 9px; letter-spacing:.15em; cursor:pointer; border-radius:2px;
+  transition: all .2s; text-transform: uppercase;
+}
+.btn:hover { background:rgba(255,255,255,.1); color:#fff; border-color:rgba(255,255,255,.3); }
+.btn.active { background:rgba(0,245,255,.1); border-color:var(--neon-cyan); color:var(--neon-cyan); }
+.btn#btnMenu { border-color:rgba(255,45,120,.3); color:rgba(255,45,120,.6); }
+.btn#btnMenu:hover { background:rgba(255,45,120,.1); border-color:var(--neon-pink); color:var(--neon-pink); }
+
+/* gesture indicator */
+#gestureBar {
+  position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%);
+  z-index: 402; pointer-events: none;
+  display: flex; gap: 12px;
+}
+.gesture-chip {
+  padding: 4px 12px; font-size: 9px; letter-spacing: .2em;
+  border-radius: 20px; border: 1px solid rgba(255,255,255,.1);
+  color: rgba(255,255,255,.25); background: rgba(0,0,0,.4);
+  transition: all .25s;
+}
+.gesture-chip.active {
+  color: var(--neon-green); border-color: var(--neon-green);
+  background: rgba(57,255,20,.1);
+  box-shadow: 0 0 10px rgba(57,255,20,.3);
+}
+
+/* trail canvas */
+#trailCanvas { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; }
+
+/* no camera */
+#noCam {
+  position:fixed;inset:0;background:#000;z-index:800;
+  display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+}
+#noCam.show{display:flex;}
+#noCam p{font-size:11px;letter-spacing:.2em;color:rgba(255,255,255,.4);text-align:center;max-width:280px;line-height:2;}
+
+/* floating tooltip for gestures */
+#gestureHint {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 450; pointer-events: none; text-align: center;
+  font-family: 'Orbitron', monospace; font-size: 13px; letter-spacing: .2em;
+  color: rgba(255,255,255,.5); transition: opacity .5s;
+}
+</style>
+</head>
+<body>
+
+<video id="videoEl" autoplay muted playsinline></video>
+<canvas id="trailCanvas"></canvas>
+<canvas id="canvas"></canvas>
+
+<div id="noCam">
+  <div style="font-size:48px">✋</div>
+  <p>CAMERA REQUIRED<br><span style="color:rgba(255,255,255,.2)">Allow permission and reload</span></p>
+  <button class="btn" onclick="location.reload()">RETRY</button>
+</div>
+
+<!-- ── MENU ─────────────────────────────────────────── -->
+<div class="screen" id="menuScreen">
+  <div class="logo">THREADLIGHT</div>
+  <div class="tagline">Hand Tracking · Elastic Glow · Gesture Play</div>
+  <div class="menu-cards">
+    <div class="mode-card" onclick="startMode('glow')">
+      <div class="icon">✨</div>
+      <div class="name">ELASTIC GLOW</div>
+      <div class="desc">Pure visual mode. Hand tracking + elastic spring web + neon bloom.</div>
+    </div>
+    <div class="mode-card" onclick="startMode('duck')">
+      <div class="icon">🦆</div>
+      <div class="name">DUCK HUNT</div>
+      <div class="desc">Shoot floating ducks with your index finger. Pinch to fire!</div>
+    </div>
+    <div class="mode-card" onclick="startMode('orbs')">
+      <div class="icon">🔮</div>
+      <div class="name">ORB BLAST</div>
+      <div class="desc">Destroy floating orbs before they hit the bottom. Open palm = blast!</div>
+    </div>
+    <div class="mode-card" onclick="startMode('painter')">
+      <div class="icon">🎨</div>
+      <div class="name">LIGHT PAINTER</div>
+      <div class="desc">Paint with trails of light. Fist = clear. Open = paint.</div>
+    </div>
+  </div>
+  <div style="margin-top:32px;font-size:9px;letter-spacing:.3em;color:rgba(255,255,255,.15)">ALLOW CAMERA → SELECT MODE → USE YOUR HANDS</div>
+</div>
+
+<!-- ── HUD ──────────────────────────────────────────── -->
+<div id="hud">
+  <div class="bracket tl"></div><div class="bracket tr"></div>
+  <div class="bracket bl"></div><div class="bracket br"></div>
+  <div class="hud-tl">
+    <div>THREADLIGHT v2</div>
+    <div id="fpsDisp">FPS —</div>
+    <div id="modeDisp">MODE —</div>
+  </div>
+  <div class="hud-tr">
+    <div><span class="status-dot" id="statusDot"></span><span id="statusTxt">INIT</span></div>
+    <div id="handDisp">HANDS 0</div>
+    <div id="gestureDisp">—</div>
+  </div>
+  <div class="hud-bl" id="hudBL"></div>
+</div>
+
+<!-- SCORE HUD -->
+<div id="scoreHud">
+  <div class="score-val" id="scoreVal">0</div>
+  <div class="score-label">SCORE</div>
+  <div class="lives-row" id="livesRow"></div>
+</div>
+
+<!-- COMBO -->
+<div id="comboPopup"><div class="combo-text" id="comboText"></div></div>
+
+<!-- GESTURE hint -->
+<div id="gestureHint" style="opacity:0"></div>
+
+<!-- GAME OVER -->
+<div id="gameOver">
+  <div class="go-title">GAME OVER</div>
+  <div class="go-score">FINAL SCORE</div>
+  <div class="go-final" id="goFinal">0</div>
+  <button class="go-btn" onclick="restartGame()">PLAY AGAIN</button>
+  <button class="go-btn" style="margin-top:8px;font-size:10px;opacity:.5" onclick="goMenu()">MENU</button>
+</div>
+
+<!-- CONTROLS -->
+<div id="controlsBar">
+  <button class="btn active" id="btnCam" onclick="toggleCam()">CAM</button>
+  <button class="btn" id="btnGlow" onclick="toggleGlow()">GLOW</button>
+  <button class="btn" id="btnTrail" onclick="toggleTrail()">TRAIL</button>
+  <button class="btn" id="btnColor" onclick="cycleColor()">NOISE</button>
+  <button class="btn" id="btnMenu" onclick="goMenu()">MENU</button>
+</div>
+
+<!-- GESTURE CHIPS -->
+<div id="gestureBar">
+  <div class="gesture-chip" id="chip-open">OPEN</div>
+  <div class="gesture-chip" id="chip-pinch">PINCH</div>
+  <div class="gesture-chip" id="chip-fist">FIST</div>
+  <div class="gesture-chip" id="chip-point">POINT</div>
+</div>
+
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  THREADLIGHT v2 — Elastic Glow + Hand Games
+// ═══════════════════════════════════════════════════════════════════
+
+// ── CANVAS SETUP ─────────────────────────────────────────────────
+const canvas      = document.getElementById('canvas');
+const ctx         = canvas.getContext('2d');
+const trailCanvas = document.getElementById('trailCanvas');
+const trailCtx    = trailCanvas.getContext('2d');
+const video       = document.getElementById('videoEl');
+
+function resize() {
+  canvas.width = trailCanvas.width = window.innerWidth;
+  canvas.height = trailCanvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── GLOBAL STATE ─────────────────────────────────────────────────
+let MODE = null; // 'glow' | 'duck' | 'orbs' | 'painter'
+let showCam   = true;
+let showGlow  = true;
+let showTrail = true;
+let colorMode = 0; // 0=noise 1=depth 2=velocity 3=rainbow
+const COLOR_MODES = ['NOISE','DEPTH','VELOCITY','RAINBOW'];
+
+let noiseTime  = 0;
+let frameCount = 0;
+let lastFPSt   = performance.now();
+let fps        = 0;
+
+// ── HAND DATA ────────────────────────────────────────────────────
+let handData    = []; // raw mediapipe results
+let particles   = []; // spring-simulated points
+let connections = []; // proximity edges
+let gestures    = [null, null]; // per hand gesture string
+
+// ── GAME STATE ───────────────────────────────────────────────────
+let score    = 0;
+let lives    = 3;
+let combo    = 0;
+let comboTimer = 0;
+let gameActive = false;
+let targets  = [];  // floating objects
+let bullets  = [];  // fired projectiles
+let particles_fx = []; // visual burst particles
+let lastShot = [0, 0]; // per hand cooldown
+
+// ── CONFIG ───────────────────────────────────────────────────────
+const CFG = {
+  proximityRadius: 0.18,
+  maxConnections:  42,
+  springK:  65,
+  damping:  15,
+  dotSize:  14,
+  glowBright: 1.8,
+  saturation: 1.4,
+  noiseAmp: { r: 0.9, g: 0.3, b: 0.6 },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+//  NOISE UTILS
+// ═══════════════════════════════════════════════════════════════════
+function noise(x, t) {
+  return Math.sin(x * 3.7 + t) * 0.5
+       + Math.sin(x * 1.3 - t * 1.7) * 0.3
+       + Math.sin(x * 7.1 + t * 0.5) * 0.2;
+}
+function hslToRgb(h, s, l) {
+  h = ((h%360)+360)%360; s/=100; l/=100;
+  const c=(1-Math.abs(2*l-1))*s, x=c*(1-Math.abs((h/60)%2-1)), m=l-c/2;
+  let r=0,g=0,b=0;
+  if(h<60){r=c;g=x}else if(h<120){r=x;g=c}else if(h<180){g=c;b=x}
+  else if(h<240){g=x;b=c}else if(h<300){r=x;b=c}else{r=c;b=x}
+  return [(r+m)*255,(g+m)*255,(b+m)*255];
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  GESTURE DETECTION
+// ═══════════════════════════════════════════════════════════════════
+function detectGesture(lms) {
+  if (!lms || lms.length < 21) return 'none';
+  const tip = (i) => lms[i];
+  const pip = (i) => lms[i - 2]; // knuckle
+
+  // finger extended = tip.y < pip.y (in MediaPipe Y-down space)
+  const ext = [1,2,3,4].map(f => {
+    const tips = [8,12,16,20];
+    const pips = [6,10,14,18];
+    return lms[tips[f-1]].y < lms[pips[f-1]].y;
+  });
+  const thumbExt = lms[4].x > lms[3].x; // right hand mirrored
+
+  const extCount = ext.filter(Boolean).length;
+
+  // Pinch: thumb tip near index tip
+  const dx = lms[4].x - lms[8].x;
+  const dy = lms[4].y - lms[8].y;
+  const pinchDist = Math.sqrt(dx*dx + dy*dy);
+  if (pinchDist < 0.06) return 'pinch';
+
+  if (extCount === 0) return 'fist';
+  if (extCount === 4 || (extCount >= 3 && thumbExt)) return 'open';
+  if (extCount === 1 && ext[0]) return 'point'; // only index up
+  return 'none';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MEDIAPIPE → PARTICLES (TD chain)
+// ═══════════════════════════════════════════════════════════════════
+function processHands(results) {
+  handData = results.multiHandLandmarks || [];
+  gestures = [null, null];
+
+  const newParticles = [];
+
+  for (let h = 0; h < Math.min(handData.length, 2); h++) {
+    const lms = handData[h];
+    gestures[h] = detectGesture(lms);
+
+    for (let i = 0; i < lms.length; i++) {
+      const lm = lms[i];
+      // Math 1: Post-Add -0.5
+      let tx = lm.x - 0.5;
+      let ty = lm.y - 0.5;
+      // Math 2: ty * -0.5625
+      ty = ty * -0.5625;
+      // Mirror
+      tx = -tx;
+
+      const nSeed = (h * 100 + i) * 0.1;
+      const r = Math.abs(noise(nSeed,       noiseTime))       * CFG.noiseAmp.r;
+      const g = Math.abs(noise(nSeed + 1.3, noiseTime * 1.2)) * CFG.noiseAmp.g;
+      const b = Math.abs(noise(nSeed + 2.7, noiseTime * 0.8)) * CFG.noiseAmp.b;
+
+      const sx = (tx + 0.5) * canvas.width;
+      const sy = ((-ty / 0.5625) * 0.5 + 0.5) * canvas.height;
+
+      const pid = h * 100 + i;
+      const ex = particles.find(p => p.id === pid);
+
+      newParticles.push({
+        id: pid, hand: h, index: i,
+        tx, ty, r, g, b,
+        targetX: sx, targetY: sy,
+        x: ex ? ex.x : sx, y: ex ? ex.y : sy,
+        vx: ex ? ex.vx : 0, vy: ex ? ex.vy : 0,
+        px: ex ? ex.px : sx, py: ex ? ex.py : sy,
+      });
+    }
+  }
+
+  // Spring simulation
+  for (const p of newParticles) {
+    const k = CFG.springK  * 0.001;
+    const d = CFG.damping  * 0.01;
+    p.vx = (p.vx + (p.targetX - p.px) * k) * (1 - d);
+    p.vy = (p.vy + (p.targetY - p.py) * k) * (1 - d);
+    p.px += p.vx; p.py += p.vy;
+    p.x = p.px;   p.y = p.py;
+  }
+
+  // Proximity
+  const radPx = CFG.proximityRadius * Math.min(canvas.width, canvas.height);
+  connections = [];
+  for (let i = 0; i < newParticles.length; i++) {
+    let cc = 0;
+    for (let j = i+1; j < newParticles.length; j++) {
+      if (cc >= CFG.maxConnections) break;
+      const dx = newParticles[i].x - newParticles[j].x;
+      const dy = newParticles[i].y - newParticles[j].y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < radPx) { connections.push({a:i,b:j,dist,t:1-dist/radPx}); cc++; }
+    }
+  }
+  particles = newParticles;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  COLOR
+// ═══════════════════════════════════════════════════════════════════
+function getColor(p, idx) {
+  let r, g, b;
+  if (colorMode === 0) { r=p.r; g=p.g; b=p.b; }
+  else if (colorMode === 1) {
+    const hue = ((p.ty * 360 + 340) % 360 + 360) % 360;
+    [r,g,b] = hslToRgb(hue,80,60); r/=255;g/=255;b/=255;
+  } else if (colorMode === 2) {
+    const sp = Math.sqrt(p.vx**2 + p.vy**2);
+    r=Math.min(1,sp*.3+.2); g=Math.min(1,sp*.1+.1); b=Math.min(1,sp*.5+.3);
+  } else {
+    const hue = (idx*17 + noiseTime*30)%360;
+    [r,g,b]=hslToRgb(hue,100,65); r/=255;g/=255;b/=255;
+  }
+  const avg = (r+g+b)/3;
+  r = Math.max(0,Math.min(1,avg+(r-avg)*CFG.saturation));
+  g = Math.max(0,Math.min(1,avg+(g-avg)*CFG.saturation));
+  b = Math.max(0,Math.min(1,avg+(b-avg)*CFG.saturation));
+  return [r,g,b];
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  ELASTIC GLOW DRAW
+// ═══════════════════════════════════════════════════════════════════
+let glowCanvas, glowCtx;
+function ensureGlow() {
+  if (!glowCanvas) { glowCanvas = document.createElement('canvas'); glowCtx = glowCanvas.getContext('2d'); }
+  glowCanvas.width = canvas.width; glowCanvas.height = canvas.height;
+}
+
+function drawGlow() {
+  ensureGlow();
+  glowCtx.clearRect(0, 0, glowCanvas.width, glowCanvas.height);
+
+  // Lines
+  for (const c of connections) {
+    const pa = particles[c.a], pb = particles[c.b];
+    if (!pa||!pb) continue;
+    const [r,g,b] = getColor(pa, c.a);
+    glowCtx.beginPath();
+    glowCtx.moveTo(pa.x, pa.y);
+    glowCtx.lineTo(pb.x, pb.y);
+    glowCtx.strokeStyle = `rgba(${(r*255)|0},${(g*255)|0},${(b*255)|0},${c.t*.85})`;
+    glowCtx.lineWidth = 3 * c.t;
+    glowCtx.stroke();
+  }
+
+  // Dots
+  for (let i=0; i<particles.length; i++) {
+    const p = particles[i];
+    const [r,g,b] = getColor(p,i);
+    const dr=Math.min(1,r*3), dg=Math.min(1,g*2.55), db=Math.min(1,b*1.8);
+    const grad = glowCtx.createRadialGradient(p.x,p.y,0,p.x,p.y,CFG.dotSize);
+    grad.addColorStop(0,   `rgba(${(dr*255)|0},${(dg*255)|0},${(db*255)|0},1)`);
+    grad.addColorStop(0.4, `rgba(${(dr*255)|0},${(dg*255)|0},${(db*255)|0},0.5)`);
+    grad.addColorStop(1,   `rgba(0,0,0,0)`);
+    glowCtx.beginPath();
+    glowCtx.arc(p.x, p.y, CFG.dotSize, 0, Math.PI*2);
+    glowCtx.fillStyle = grad;
+    glowCtx.fill();
+  }
+
+  if (!showGlow) { ctx.drawImage(glowCanvas,0,0); return; }
+
+  ctx.save();
+  ctx.filter = `blur(6px) brightness(${CFG.glowBright})`;
+  ctx.globalCompositeOperation = 'screen';
+  ctx.globalAlpha = .8;
+  ctx.drawImage(glowCanvas,0,0);
+  ctx.restore();
+
+  ctx.save();
+  ctx.filter = `blur(20px) brightness(${CFG.glowBright*.6})`;
+  ctx.globalCompositeOperation = 'screen';
+  ctx.globalAlpha = .45;
+  ctx.drawImage(glowCanvas,0,0);
+  ctx.restore();
+
+  ctx.save();
+  ctx.filter = `brightness(${CFG.glowBright*1.1})`;
+  ctx.globalCompositeOperation = 'screen';
+  ctx.globalAlpha = .9;
+  ctx.drawImage(glowCanvas,0,0);
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  TRAIL PAINTER (mode: painter)
+// ═══════════════════════════════════════════════════════════════════
+function updateTrail() {
+  if (!showTrail) return;
+
+  if (MODE === 'painter') {
+    // Fade trail slowly
+    trailCtx.fillStyle = 'rgba(0,0,0,0.01)';
+    trailCtx.fillRect(0,0,trailCanvas.width,trailCanvas.height);
+  } else {
+    // Fast fade for other modes
+    trailCtx.fillStyle = 'rgba(0,0,0,0.06)';
+    trailCtx.fillRect(0,0,trailCanvas.width,trailCanvas.height);
+  }
+
+  for (let h=0; h<handData.length && h<2; h++) {
+    if (MODE === 'painter' && gestures[h] === 'fist') continue; // fist = no paint
+    if (MODE !== 'painter' && !showTrail) continue;
+
+    const lms = handData[h];
+    if (!lms) continue;
+
+    // Draw trail for index finger tip
+    const idxTip = lms[8];
+    const sx = (1 - idxTip.x) * canvas.width;
+    const sy = idxTip.y * canvas.height;
+
+    const hue = (h * 180 + noiseTime * 40) % 360;
+    const size = MODE === 'painter' ? 10 : 4;
+    const alpha = MODE === 'painter' ? 0.9 : 0.5;
+
+    const grad = trailCtx.createRadialGradient(sx,sy,0,sx,sy,size*2);
+    grad.addColorStop(0, `hsla(${hue},100%,70%,${alpha})`);
+    grad.addColorStop(1, `hsla(${hue},100%,50%,0)`);
+    trailCtx.beginPath();
+    trailCtx.arc(sx,sy,size*2,0,Math.PI*2);
+    trailCtx.fillStyle = grad;
+    trailCtx.fill();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  GAME OBJECTS — TARGETS
+// ═══════════════════════════════════════════════════════════════════
+
+const EMOJI_SETS = {
+  duck: ['🦆','🐦','🐧','🦜','🦉'],
+  orbs: ['🔮','💎','⚡','🌟','🎯','💥','🌀'],
+};
+
+function spawnTarget() {
+  const W = canvas.width, H = canvas.height;
+  const set = MODE === 'duck' ? EMOJI_SETS.duck : EMOJI_SETS.orbs;
+  const emoji = set[Math.floor(Math.random() * set.length)];
+  const size  = 40 + Math.random() * 30;
+
+  let vx, vy;
+  if (MODE === 'duck') {
+    // Ducks fly horizontally
+    const fromLeft = Math.random() > 0.5;
+    return {
+      x: fromLeft ? -60 : W + 60,
+      y: 80 + Math.random() * (H * 0.5),
+      vx: fromLeft ? 2 + Math.random()*2 : -(2 + Math.random()*2),
+      vy: Math.sin(Math.random() * Math.PI * 2) * 0.8,
+      wave: Math.random() * Math.PI * 2,
+      size, emoji, hp: 1, dead: false, age: 0,
+      scale: 1, alpha: 1,
+    };
+  } else {
+    // Orbs fall from top
+    return {
+      x: 80 + Math.random() * (W - 160),
+      y: -60,
+      vx: (Math.random() - 0.5) * 1.5,
+      vy: 1 + Math.random() * 2,
+      wave: Math.random() * Math.PI * 2,
+      size, emoji, hp: 1, dead: false, age: 0,
+      scale: 1, alpha: 1,
+    };
+  }
+}
+
+let spawnTimer = 0;
+let spawnInterval = 120; // frames
+
+function updateTargets() {
+  spawnTimer++;
+  if (spawnTimer >= spawnInterval) {
+    spawnTimer = 0;
+    targets.push(spawnTarget());
+    // Speed up over time
+    spawnInterval = Math.max(40, spawnInterval - 0.5);
+  }
+
+  const W = canvas.width, H = canvas.height;
+
+  for (const t of targets) {
+    if (t.dead) continue;
+    t.age++;
+    t.wave += 0.04;
+
+    if (MODE === 'duck') {
+      t.x += t.vx;
+      t.y += Math.sin(t.wave) * 0.8;
+      if (t.x < -100 || t.x > W + 100) { t.dead = true; loseLife(); }
+    } else {
+      t.x += t.vx + Math.sin(t.wave) * 0.4;
+      t.y += t.vy;
+      if (t.y > H + 60) { t.dead = true; loseLife(); }
+    }
+  }
+
+  targets = targets.filter(t => !t.dead || t.alpha > 0.01);
+}
+
+function drawTargets() {
+  for (const t of targets) {
+    if (t.alpha < 0.01) continue;
+    ctx.save();
+    ctx.globalAlpha = t.alpha;
+    ctx.font = `${t.size * t.scale}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Glow behind target
+    ctx.shadowColor = 'rgba(255,200,50,0.6)';
+    ctx.shadowBlur  = 20;
+    ctx.fillText(t.emoji, t.x, t.y);
+    ctx.restore();
+
+    // HP bar for orbs
+    if (MODE === 'orbs' && !t.dead) {
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fillRect(t.x - 20, t.y + t.size/2 + 4, 40, 3);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  BULLETS / SHOTS
+// ═══════════════════════════════════════════════════════════════════
+function fireBullet(hand, gesture) {
+  const now = Date.now();
+  if (now - lastShot[hand] < 400) return; // cooldown
+  lastShot[hand] = now;
+
+  const lms = handData[hand];
+  if (!lms) return;
+
+  const tip = lms[8]; // index tip
+  const sx = (1 - tip.x) * canvas.width;
+  const sy = tip.y * canvas.height;
+
+  // Direction: from wrist to index tip
+  const wrist = lms[0];
+  const wx = (1 - wrist.x) * canvas.width;
+  const wy = wrist.y * canvas.height;
+  let dx = sx - wx, dy = sy - wy;
+  const len = Math.sqrt(dx*dx+dy*dy) || 1;
+  dx /= len; dy /= len;
+
+  const speed = 18;
+  bullets.push({
+    x: sx, y: sy, vx: dx*speed, vy: dy*speed,
+    age: 0, hand, alive: true,
+    color: hand === 0 ? '#00f5ff' : '#ff2d78',
+  });
+}
+
+function updateBullets() {
+  for (const b of bullets) {
+    if (!b.alive) continue;
+    b.x += b.vx; b.y += b.vy; b.age++;
+
+    // Hit detection
+    for (const t of targets) {
+      if (t.dead || t.alpha < 0.5) continue;
+      const dx = b.x - t.x, dy = b.y - t.y;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      if (dist < t.size * 0.8) {
+        b.alive = false;
+        hitTarget(t);
+        break;
+      }
+    }
+    if (b.age > 60 || b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
+      b.alive = false;
+    }
+  }
+  bullets = bullets.filter(b => b.alive);
+}
+
+function drawBullets() {
+  for (const b of bullets) {
+    ctx.save();
+    ctx.shadowColor = b.color;
+    ctx.shadowBlur  = 20;
+    const grad = ctx.createRadialGradient(b.x,b.y,0,b.x,b.y,8);
+    grad.addColorStop(0, b.color);
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 8, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PALM BLAST (orbs mode: open hand destroys nearby orbs)
+// ═══════════════════════════════════════════════════════════════════
+let blastCooldown = [0, 0];
+
+function tryBlast(hand) {
+  const now = Date.now();
+  if (now - blastCooldown[hand] < 800) return;
+  blastCooldown[hand] = now;
+
+  const lms = handData[hand];
+  if (!lms) return;
+
+  // Palm center = landmark 9 (middle finger MCP)
+  const palm = lms[9];
+  const px = (1 - palm.x) * canvas.width;
+  const py = palm.y * canvas.height;
+  const blastR = canvas.width * 0.18;
+
+  let blasted = false;
+  for (const t of targets) {
+    if (t.dead) continue;
+    const dx = t.x - px, dy = t.y - py;
+    if (Math.sqrt(dx*dx+dy*dy) < blastR) {
+      hitTarget(t);
+      blasted = true;
+    }
+  }
+
+  if (blasted) {
+    spawnBurstAt(px, py, 20, '#bf5fff');
+    showGestureHint('✊ BLAST!');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  HIT LOGIC
+// ═══════════════════════════════════════════════════════════════════
+function hitTarget(t) {
+  t.dead = true;
+  combo++;
+  comboTimer = 90;
+  const pts = 10 * combo;
+  score += pts;
+  updateScoreHud();
+
+  // Death animation
+  const step = () => { t.scale += 0.12; t.alpha -= 0.12; };
+  const anim = () => { if (t.alpha > 0.01) { step(); requestAnimationFrame(anim); } };
+  anim();
+
+  spawnBurstAt(t.x, t.y, 12, '#ffd166');
+
+  if (combo >= 3) showCombo(combo);
+}
+
+function loseLife() {
+  if (!gameActive) return;
+  lives--;
+  updateScoreHud();
+  if (lives <= 0) endGame();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PARTICLE FX BURSTS
+// ═══════════════════════════════════════════════════════════════════
+function spawnBurstAt(x, y, count, color) {
+  for (let i=0; i<count; i++) {
+    const angle = (i/count)*Math.PI*2 + Math.random()*0.3;
+    const spd   = 3 + Math.random() * 6;
+    particles_fx.push({
+      x, y,
+      vx: Math.cos(angle)*spd,
+      vy: Math.sin(angle)*spd,
+      alpha: 1, size: 2+Math.random()*4,
+      color, age: 0,
+    });
+  }
+}
+
+function updateFX() {
+  for (const p of particles_fx) {
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.92; p.vy *= 0.92;
+    p.alpha -= 0.03; p.age++;
+  }
+  particles_fx = particles_fx.filter(p => p.alpha > 0.01);
+}
+
+function drawFX() {
+  for (const p of particles_fx) {
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur  = 10;
+    ctx.fillStyle   = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  GESTURE → GAME ACTIONS
+// ═══════════════════════════════════════════════════════════════════
+function handleGestures() {
+  for (let h=0; h<2; h++) {
+    const g = gestures[h];
+    if (!g) continue;
+
+    if (MODE === 'duck' || MODE === 'orbs') {
+      if (g === 'pinch' || g === 'point') fireBullet(h, g);
+      if (g === 'open' && MODE === 'orbs') tryBlast(h);
+    }
+
+    if (MODE === 'painter') {
+      if (g === 'fist') {
+        // Fist clears trail
+        trailCtx.clearRect(0,0,trailCanvas.width,trailCanvas.height);
+        showGestureHint('✊ CLEAR');
+      }
+    }
+  }
+}
+
+// Cursor / crosshair for game modes
+function drawCrosshair() {
+  if (MODE !== 'duck' && MODE !== 'orbs') return;
+  for (let h=0; h<handData.length && h<2; h++) {
+    const lms = handData[h];
+    if (!lms) continue;
+    const tip = lms[8];
+    const sx = (1 - tip.x) * canvas.width;
+    const sy = tip.y * canvas.height;
+    const g = gestures[h];
+    const color = h === 0 ? '#00f5ff' : '#ff2d78';
+    const isPinching = g === 'pinch' || g === 'point';
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = isPinching ? 2 : 1;
+    ctx.globalAlpha = isPinching ? 1 : 0.6;
+    ctx.shadowColor = color;
+    ctx.shadowBlur  = isPinching ? 15 : 5;
+
+    const r = isPinching ? 18 : 24;
+    ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI*2); ctx.stroke();
+
+    // crosshair lines
+    ctx.beginPath();
+    ctx.moveTo(sx - r - 6, sy); ctx.lineTo(sx - r + 4, sy);
+    ctx.moveTo(sx + r - 4, sy); ctx.lineTo(sx + r + 6, sy);
+    ctx.moveTo(sx, sy - r - 6); ctx.lineTo(sx, sy - r + 4);
+    ctx.moveTo(sx, sy + r - 4); ctx.lineTo(sx, sy + r + 6);
+    ctx.stroke();
+
+    if (isPinching) {
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  SCORE / UI
+// ═══════════════════════════════════════════════════════════════════
+function updateScoreHud() {
+  document.getElementById('scoreVal').textContent = score.toLocaleString();
+  const row = document.getElementById('livesRow');
+  row.innerHTML = '';
+  for (let i=0; i<3; i++) {
+    const h = document.createElement('div');
+    h.className = 'heart' + (i >= lives ? ' lost' : '');
+    h.textContent = '❤️';
+    row.appendChild(h);
+  }
+}
+
+function showCombo(n) {
+  const labels = {3:'TRIPLE!',4:'QUAD!',5:'PENTA!',6:'HEXA!',7:'LUCKY 7!',10:'PERFECT!'};
+  const text = labels[n] || (n + 'x COMBO!');
+  document.getElementById('comboText').textContent = text;
+  const el = document.getElementById('comboPopup');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1200);
+}
+
+let gestureHintTimer = 0;
+function showGestureHint(text) {
+  const el = document.getElementById('gestureHint');
+  el.textContent = text;
+  el.style.opacity = '1';
+  clearTimeout(gestureHintTimer);
+  gestureHintTimer = setTimeout(() => { el.style.opacity = '0'; }, 1200);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MODE MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════
+function startMode(mode) {
+  MODE = mode;
+  document.getElementById('menuScreen').classList.add('hidden');
+  document.getElementById('modeDisp').textContent = 'MODE ' + mode.toUpperCase();
+
+  if (mode === 'duck' || mode === 'orbs') {
+    startGame();
+  } else {
+    document.getElementById('scoreHud').style.display = 'none';
+    gameActive = false;
+    targets = []; bullets = [];
+  }
+
+  if (mode === 'painter') {
+    trailCtx.clearRect(0,0,trailCanvas.width,trailCanvas.height);
+    showGestureHint('OPEN = paint · FIST = clear');
+  }
+}
+
+function startGame() {
+  score = 0; lives = 3; combo = 0;
+  targets = []; bullets = []; particles_fx = [];
+  spawnTimer = 0; spawnInterval = 120;
+  gameActive = true;
+  document.getElementById('scoreHud').style.display = 'block';
+  document.getElementById('gameOver').classList.remove('show');
+  updateScoreHud();
+}
+
+function endGame() {
+  gameActive = false;
+  document.getElementById('goFinal').textContent = score.toLocaleString();
+  document.getElementById('gameOver').classList.add('show');
+}
+
+function restartGame() {
+  document.getElementById('gameOver').classList.remove('show');
+  startGame();
+}
+
+function goMenu() {
+  MODE = null; gameActive = false;
+  document.getElementById('menuScreen').classList.remove('hidden');
+  document.getElementById('scoreHud').style.display = 'none';
+  document.getElementById('gameOver').classList.remove('show');
+  targets = []; bullets = []; particles_fx = [];
+  trailCtx.clearRect(0,0,trailCanvas.width,trailCanvas.height);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  CONTROL BUTTONS
+// ═══════════════════════════════════════════════════════════════════
+function toggleCam()  { showCam=!showCam;   document.getElementById('btnCam').classList.toggle('active',showCam); }
+function toggleGlow() { showGlow=!showGlow; document.getElementById('btnGlow').classList.toggle('active',showGlow); }
+function toggleTrail(){ showTrail=!showTrail; document.getElementById('btnTrail').classList.toggle('active',showTrail); }
+function cycleColor() {
+  colorMode=(colorMode+1)%4;
+  document.getElementById('btnColor').textContent=COLOR_MODES[colorMode];
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  HUD UPDATES
+// ═══════════════════════════════════════════════════════════════════
+function updateHUD() {
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFPSt > 500) {
+    fps = Math.round(frameCount * 1000 / (now - lastFPSt));
+    frameCount = 0; lastFPSt = now;
+    document.getElementById('fpsDisp').textContent = `FPS ${fps}`;
+    document.getElementById('handDisp').textContent = `HANDS ${handData.length}`;
+  }
+
+  // Gesture chips
+  const allG = gestures.filter(Boolean);
+  ['open','pinch','fist','point'].forEach(g => {
+    document.getElementById(`chip-${g}`).classList.toggle('active', allG.includes(g));
+  });
+
+  // Gesture display
+  const gStr = gestures.map((g,i) => g ? `H${i+1}:${g.toUpperCase()}` : null).filter(Boolean).join(' ');
+  document.getElementById('gestureDisp').textContent = gStr || '—';
+
+  // Combo decay
+  if (comboTimer > 0) { comboTimer--; } else { combo = 0; }
+
+  document.getElementById('hudBL').innerHTML =
+    MODE ? `COMBO ×${combo}<br>TARGETS ${targets.filter(t=>!t.dead).length}` : '';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MAIN RENDER LOOP
+// ═══════════════════════════════════════════════════════════════════
+function loop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Camera
+  if (showCam && video.readyState >= 2) {
+    ctx.save();
+    ctx.globalAlpha = MODE ? 0.25 : 0.18;
+    ctx.translate(canvas.width, 0); ctx.scale(-1,1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  // Trail layer (from trailCanvas)
+  if (showTrail || MODE === 'painter') {
+    ctx.drawImage(trailCanvas, 0, 0);
+  }
+
+  // Elastic glow (always rendered regardless of mode)
+  if (particles.length > 0) drawGlow();
+
+  // Game logic
+  if (gameActive) {
+    updateTargets();
+    updateBullets();
+    drawTargets();
+    drawBullets();
+    drawCrosshair();
+    handleGestures();
+  } else if (MODE === 'painter') {
+    handleGestures();
+  }
+
+  // FX
+  updateFX(); drawFX();
+  updateTrail();
+  updateHUD();
+  noiseTime += 0.008;
+
+  requestAnimationFrame(loop);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MEDIAPIPE INIT
+// ═══════════════════════════════════════════════════════════════════
+async function init() {
+  const dot  = document.getElementById('statusDot');
+  const txt  = document.getElementById('statusTxt');
+  dot.className = 'status-dot warn'; txt.textContent = 'LOADING';
+
+  try {
+    const hands = new Hands({
+      locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`,
+    });
+    hands.setOptions({ maxNumHands:2, modelComplexity:1, minDetectionConfidence:.6, minTrackingConfidence:.55 });
+    hands.onResults(processHands);
+
+    const stream = await navigator.mediaDevices.getUserMedia({ video:{width:1280,height:720,facingMode:'user'} });
+    video.srcObject = stream;
+    await video.play();
+
+    const cam = new Camera(video, {
+      onFrame: async () => { await hands.send({image:video}); },
+      width:1280, height:720,
+    });
+    await cam.start();
+
+    dot.className = 'status-dot live'; txt.textContent = 'LIVE';
+  } catch(e) {
+    console.error(e);
+    dot.className = 'status-dot err'; txt.textContent = 'NO CAM';
+    if (e.name === 'NotAllowedError') document.getElementById('noCam').classList.add('show');
+  }
+}
+
+loop();
+init();
+</script>
+</body>
+</html>
