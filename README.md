@@ -111,3 +111,57 @@ threadlight-v2/
 - **Combo system** — consecutive hits multiply score, decay on miss
 - **Particle FX** — burst spawner on hit, additive blended
 - **Trail canvas** — separate canvas with slow fade for motion trails
+🦆 Duck Hunt
+Goal: Shoot all ducks before they fly off screen. Miss too many = lose a life.
+Your weapon = your index finger
+Point your index finger at the screen like a gun
+         ☝️  ← this is your crosshair
+GestureWhat happens☝️ Point (only index finger up)Crosshair appears, ready to aim🤌 Pinch (thumb touches index tip)FIRES a bullet
+Step by step:
+
+Raise your hand — you'll see a cyan circle crosshair follow your index finger
+Aim by moving your whole hand to point at a duck
+Pinch your thumb and index together quickly to shoot
+The bullet travels from your fingertip toward the target
+Ducks fly left→right or right→left across screen
+If a duck exits the screen without being shot → you lose 1 life ❤️
+You have 3 lives total
+Shoot fast — ducks get faster over time!
+
+Scoring:
+
+1 kill = 10 points
+Chain kills without missing = COMBO multiplier
+3x combo = 30pts, 4x = 40pts etc.
+
+
+🔮 Orb Blast
+Goal: Destroy orbs before they fall to the bottom. Two weapons — gun and blast.
+Weapon 1 — Finger Gun (same as Duck Hunt)
+GestureAction☝️ PointAim crosshair (pink for right hand)🤌 PinchFire bullet at orb
+Weapon 2 — Palm Blast (new!)
+Spread all 5 fingers open wide
+        🖐️  ← this destroys ALL orbs near your palm
+GestureAction🖐️ Open palmTriggers a blast radius around your palm centerDestroys every orb within ~18% of screen widthCooldown: 0.8 seconds between blasts
+Step by step:
+
+Orbs fall from the top of screen downward
+Use pinch to snipe individual orbs
+When multiple orbs cluster together → switch to open palm blast
+Thrust your open hand toward the cluster
+If an orb reaches the bottom → lose 1 life ❤️
+Orbs spawn faster as your score increases
+
+Pro tips:
+
+Use two hands — one pointing (snipe) + one open (blast)
+Cyan crosshair = left hand, Pink crosshair = right hand
+Watch the gesture chips at the bottom — they light up green when detected
+The COMBO × number in the bottom-left shows your multiplier
+
+
+🎨 Light Painter
+GestureAction🖐️ Open handPaints glowing trails as you move✊ FistClears the entire canvas
+
+Controls Bar (bottom of screen)
+ButtonDoesCAMToggle camera feed on/offGLOWToggle bloom effectTRAILToggle motion trailsNOISE / DEPTH / VELOCITY / RAINBOWCycles particle color modeMENUBack to mode select
